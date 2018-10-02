@@ -1,0 +1,179 @@
+- firewalld:
+    service: http
+    permanent: true
+    immediate: yes
+    state: enabled
+
+- firewalld:
+    service: snmptrap
+    permanent: true
+    immediate: yes
+    state: enabled
+
+- firewalld:
+    port: 10051/tcp
+    permanent: true
+    immediate: yes
+    state: enabled
+
+- name: yum install phase1
+  yum:
+    name={{ item }}
+    state=installed
+  with_items:
+    - httpd
+    - mariadb-server
+    - MySQL-python
+    - zabbix-server-mysql
+    - zabbix-web
+    - zabbix-web-japanese
+    - zabbix-get
+    - zabbix-agent
+    - zabbix-sender
+    - php-mysql
+    - net-snmp
+    - epel-release
+
+- name: yum install phase2
+  yum:
+    name={{ item }}
+    state=installed
+  with_items:
+    - snmptt
+    - perl-Sys-Syslog
+    - net-snmp-perl
+
+- name: enabled and start mariadb
+  service:
+    name: mariadb
+    state: started
+    enabled: yes
+
+- name: create database zabbix
+  mysql_db:
+    name: zabbix
+    encoding: utf8
+    state: present
+
+- name: create and modify zabbix user
+  mysql_user:
+    name: zabbix
+    password: "{{ item.zabbix_mariadb_password }}"
+    priv: 'zabbix.*:ALL,GRANT'
+    state: present
+  with_items: "{{ zabbix_setup }}"
+
+- name: check to exist  zabbix table. ignore status is OK.
+  shell: mysql -u root -ss zabbix -e "select count(*) from users"
+  ignore_errors: yes
+  register: count_users
+- debug: var=count_users
+
+- name: insert zabbix DB
+  shell: zcat /usr/share/doc/zabbix-server-mysql*/create.sql.gz | mysql zabbix -u root
+  when: count_users.rc != 0
+
+- name: modify httpd config
+  lineinfile: >-
+    dest='/etc/httpd/conf.d/zabbix.conf'
+    state=present
+    backrefs=yes
+    regexp='php_value date.timezone'
+    line='        php_value date.timezone Asia/Tokyo' 
+  notify:
+    - restart httpd
+
+- name: modify snmpttini config
+  lineinfile: 
+    dest='/etc/snmp/snmptt.ini'
+    state=present
+    backrefs=yes
+    regexp="{{ item.regexp }}"
+    line="{{ item.line }}"
+  with_items:
+  - { regexp: 'date_time_format =', line: 'date_time_format = %Y/%m/%d %H:%M:%S' }
+  - { regexp: 'mode = standalone', line: 'mode = daemon' }
+  - { regexp: '^log_file = ', line: 'log_file = /var/log/snmptt/snmptt.log' }
+  - { regexp: 'net_snmp_perl_enable = 0', line: 'net_snmp_perl_enable = 1'}
+  - { regexp: 'translate_log_trap_oid = 0', line: 'translate_log_trap_oid = 1' }
+  notify:
+    - restart snmptt
+
+- name: modify zabbix_server config
+  lineinfile: 
+    dest='/etc/zabbix/zabbix_server.conf'
+    state=present
+    backrefs=yes
+    regexp="{{ item.regexp }}"
+    line="{{ item.line }}"
+  with_items:
+  - { regexp: 'SNMPTrapperFile=', line: 'SNMPTrapperFile=/var/log/snmptt/snmptt.log' }
+  - { regexp: 'StartSNMPTrapper=', line: 'StartSNMPTrapper=1' }
+  notify:
+    - restart zabbix-server
+
+- name: enabled and start httpd
+  service:
+    name: httpd
+    state: started
+    enabled: yes
+
+- name: modify config
+  lineinfile: >-
+    dest='/etc/zabbix/zabbix_server.conf'
+    state=present
+    backrefs=yes
+    regexp='DBPassword=$'
+    line="DBPassword={{ item.zabbix_mariadb_password }}"
+  with_items: "{{ zabbix_setup }}"
+  notify:
+    - restart zabbix-server
+
+- name: template zabbix.conf.php
+  template: >
+    src=zabbix.conf.php.j2
+    dest=/etc/zabbix/web/zabbix.conf.php
+    owner=root
+    group=root
+    mode=0644
+  with_items: "{{ zabbix_setup }}"
+
+- name: modify snmptrap config
+  lineinfile: >-
+    dest='/etc/sysconfig/snmptrapd'
+    state=present
+    backrefs=yes
+    regexp='OPTIONS'
+    line="OPTIONS=\"-m +ALL -Lsd -On\""
+  notify:
+    - restart snmptrapd
+
+- name: template snmptrapd.conf.php
+  template: >
+    src=snmptrapd.conf.j2
+    dest=/etc/snmp/snmptrapd.conf
+    owner=root
+    group=root
+    mode=0644
+  with_items: "{{ zabbix_setup }}"
+  notify:
+    - restart snmptrapd
+
+- name: enabled and start zabbix-server
+  service:
+    name: zabbix-server
+    state: started
+    enabled: yes
+
+- name: enabled and start snmptt
+  service:
+    name: snmptt
+    state: started
+    enabled: yes
+
+- name: enabled and start snmptrapd
+  service:
+    name: snmptrapd
+    state: started
+    enabled: yes
+

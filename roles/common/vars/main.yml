@@ -1,0 +1,8 @@
+common:
+  - timezone: "Asia/Tokyo"
+    timeservers:
+      - "192.168.0.20"
+zabbix_setup:
+  - zabbix_mariadb_password: "zabbix"
+    snmptrap_community: "public"
+    zabbix_server_ip: "192.168.0.56"

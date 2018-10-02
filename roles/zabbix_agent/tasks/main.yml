@@ -1,0 +1,29 @@
+- firewalld:
+    port: 10050/tcp
+    permanent: true
+    immediate: yes
+    state: enabled
+
+- name: yum install
+  yum:
+    name={{ item }}
+    state=installed
+  with_items:
+    - zabbix-agent
+
+- name: modify zabbix_agentd config
+  template: >
+    src=zabbix_agentd.conf.j2
+    dest='/etc/zabbix/zabbix_agentd.conf'
+    owner=root
+    group=root
+    mode=0644
+  with_items: "{{ zabbix_setup }}"
+  notify:
+    - restart zabbix-agent
+
+- name: enabled and start zabbix-agent
+  service:
+    name: zabbix-agent
+    state: started
+    enabled: yes

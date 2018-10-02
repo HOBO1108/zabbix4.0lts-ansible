@@ -1,0 +1,6 @@
+- name: Install zabbix agent
+  hosts: zabbix_agents
+  roles:
+   - common
+   - zabbix_agent
+
