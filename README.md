@@ -58,7 +58,7 @@ zabbix_setup:
 # ansibleが稼働するサーバで、git clone実施
 
 ```
-git clone https://github.com/HOBO1108/zabbix40lts-ansible.git
+git clone https://github.com/HOBO1108/zabbix4.0lts-ansible.git
 cd zabbix40lts-ansible/
 ```
 
